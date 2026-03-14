@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, ResponsiveContainer, Cell, Tooltip } from 'rechar
 import { supabase } from '@/lib/supabase';
 
 export default function Home() {
+  // --- States ---
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState('');
@@ -12,49 +13,78 @@ export default function Home() {
   const [selectedAccount, setSelectedAccount] = useState('SBI Savings');
   const [transactions, setTransactions] = useState<any[]>([]);
 
-  const [accounts, setAccounts] = useState([
+  // Fixed Accounts (Ithaiyum future-la database-ku mathalam)
+  const [accounts] = useState([
     { id: '1', name: 'SBI Savings', balance: 32000, color: 'bg-blue-600' },
     { id: '2', name: 'HDFC Bank', balance: 12500, color: 'bg-red-500' },
     { id: '3', name: 'Cash Wallet', balance: 1000, color: 'bg-green-500' },
   ]);
 
-  // Supabase-la irunthu data-ah load panna
+  // --- 1. Load Data from Supabase (Refresh panna ithu thaan data-ah edukkum) ---
   useEffect(() => {
     const fetchTransactions = async () => {
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
-        .order('id', { ascending: false });
+        .order('created_at', { ascending: false });
       
-      if (data) setTransactions(data);
+      if (data) {
+        setTransactions(data);
+      }
+      if (error) {
+        console.error("Fetch error:", error);
+      }
     };
     fetchTransactions();
   }, []);
 
   const totalBalance = accounts.reduce((acc, curr) => acc + curr.balance, 0);
 
+  // --- 2. Save Data to Supabase ---
+  const handleSave = async () => {
+    if (!name || !amount) {
+      alert("Ella details-um fill pannunga mapla!");
+      return;
+    }
+
+    const numAmount = parseFloat(amount);
+
+    try {
+      // Supabase-ku data anuppuvom
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([{ 
+          name: name, 
+          amount: numAmount, 
+          type: 'expense', 
+          account: selectedAccount 
+        }])
+        .select();
+
+      if (error) {
+        // RLS error vandha inga alert kaattum
+        alert("Database error: " + error.message + ". Supabase-la RLS disable panniteengala mapla?");
+        return;
+      }
+
+      // Success aana UI update pannuvom
+      if (data) {
+        setTransactions([data[0], ...transactions]);
+        setIsModalOpen(false);
+        setName('');
+        setAmount('');
+        alert("Success-ah save aayiduchi mapla! 🔥");
+      }
+    } catch (err) {
+      console.error("System error:", err);
+    }
+  };
+
   const chartData = [
     { name: 'Mon', value: 400 }, { name: 'Tue', value: 300 }, { name: 'Wed', value: 600 },
     { name: 'Thu', value: 200 }, { name: 'Fri', value: 700 }, { name: 'Sat', value: 400 },
     { name: 'Sun', value: 500 },
   ];
-
-  const handleSave = async () => {
-    if (!name || !amount) return;
-    const numAmount = parseFloat(amount);
-
-    // Supabase-ku data-ah push pannuvom
-    const { error } = await supabase
-      .from('transactions')
-      .insert([{ name, amount: numAmount, type: 'expense', account: selectedAccount }]);
-
-    if (!error) {
-      setTransactions([{ id: Date.now(), name, amount: numAmount, type: 'expense', account: selectedAccount }, ...transactions]);
-      setIsModalOpen(false);
-      setName('');
-      setAmount('');
-    }
-  };
 
   return (
     <main className="flex h-screen bg-[#F3F0FF] p-4 gap-4 font-sans overflow-hidden">
@@ -75,20 +105,21 @@ export default function Home() {
           ))}
         </div>
         <nav className="mt-auto">
-          <div className="flex items-center gap-4 p-4 rounded-2xl bg-[#7C3AED] text-white shadow-md"><LayoutDashboard size={20}/> Dashboard</div>
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-[#7C3AED] text-white shadow-md font-bold"><LayoutDashboard size={20}/> Dashboard</div>
         </nav>
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
+      <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2">
         <header className="flex justify-between items-center bg-white p-6 rounded-[32px] shadow-sm shrink-0">
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">Bank Manager Mode</h2>
-            <p className="text-gray-400 text-xs tracking-wide">Tracking {accounts.length} accounts</p>
+            <h2 className="text-2xl font-bold text-gray-800">Welcome Mapla!</h2>
+            <p className="text-gray-400 text-xs tracking-wide">Lavenly Finance Tracker</p>
           </div>
           <button onClick={() => setIsModalOpen(true)} className="bg-[#7C3AED] text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold shadow-lg hover:scale-105 transition-all"><Plus size={20}/> Add Transaction</button>
         </header>
 
+        {/* Balance & Chart Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 shrink-0">
           <div className="bg-[#7C3AED] p-8 rounded-[32px] shadow-xl text-white relative overflow-hidden flex flex-col justify-center min-h-[220px]">
              <div className="absolute top-0 right-0 p-10 opacity-10"><Wallet size={100}/></div>
@@ -111,6 +142,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Transactions List */}
         <div className="bg-white p-8 rounded-[32px] shadow-sm flex-1 border border-purple-50 mb-2">
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-bold text-xl text-gray-800 tracking-tight">Recent Transactions</h3>
@@ -120,7 +152,7 @@ export default function Home() {
             </div>
           </div>
           <div className="flex flex-col gap-4">
-            {transactions.map((t) => (
+            {transactions.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase())).map((t) => (
               <div key={t.id} className="flex justify-between items-center p-4 hover:bg-purple-50 rounded-2xl transition-all">
                 <div className="flex items-center gap-4">
                   <div className={`p-3 rounded-xl bg-red-100 text-red-600`}><ArrowDownRight size={20}/></div>
@@ -129,14 +161,14 @@ export default function Home() {
                     <span className="text-[10px] bg-purple-100 text-purple-600 px-2 rounded-full font-bold">{t.account}</span>
                   </div>
                 </div>
-                <p className="font-bold text-lg text-gray-800">-₹{t.amount.toLocaleString()}</p>
+                <p className="font-bold text-lg text-gray-800">-₹{t.amount?.toLocaleString()}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Modal code inga thaan irukanum */}
+      {/* Expense Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-white w-full max-w-md p-8 rounded-[40px] shadow-2xl relative">
@@ -148,7 +180,7 @@ export default function Home() {
               </select>
               <input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="Expense Name" className="w-full p-5 bg-gray-50 rounded-2xl outline-none" />
               <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" placeholder="Amount (₹)" className="w-full p-5 bg-gray-50 rounded-2xl outline-none" />
-              <button onClick={handleSave} className="bg-[#7C3AED] text-white p-5 rounded-2xl font-bold mt-4 shadow-xl">Confirm</button>
+              <button onClick={handleSave} className="bg-[#7C3AED] text-white p-5 rounded-2xl font-bold mt-4 shadow-xl active:scale-95 transition-all">Confirm Payment</button>
             </div>
           </div>
         </div>
