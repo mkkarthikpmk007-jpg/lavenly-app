@@ -75,17 +75,21 @@ export default function Home() {
     if (transData) setTransactions(transData);
   };
 
-  // --- Keyboard PIN Support ---
+  // --- Keyboard Support (PIN & Forms) ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isLocked && user && !isModalOpen && !isAccModalOpen) {
         if (/^[0-9]$/.test(e.key)) handlePinAction(e.key);
         if (e.key === 'Backspace') setInputPin(prev => prev.slice(0, -1));
       }
+      if (e.key === 'Enter') {
+        if (isModalOpen) handleSave();
+        else if (isAccModalOpen) handleAddAccount();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [inputPin, isLocked, user, isModalOpen, isAccModalOpen]);
+  }, [inputPin, isLocked, user, isModalOpen, isAccModalOpen, name, amount, selectedAccount, accName, accBalance]);
 
   // --- Handlers ---
   const handleLogin = async (e: React.FormEvent) => {
@@ -107,7 +111,6 @@ export default function Home() {
     if (inputPin.length < 4) {
       const newPin = inputPin + digit;
       setInputPin(newPin);
-
       if (newPin.length === 4) {
         if (isSettingPin) {
           const { error } = await supabase.from('profiles').insert([{ id: user.id, security_pin: newPin }]);
@@ -140,6 +143,19 @@ export default function Home() {
     }
   };
 
+  const handleDeleteTransaction = async (id: number, tAmount: number, tType: string, tAccount: string) => {
+    if (!confirm("Delete pannalaama mapla?")) return;
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) {
+      const acc = accounts.find(a => a.name === tAccount);
+      if (acc) {
+        const newBal = tType === 'income' ? Number(acc.balance) - tAmount : Number(acc.balance) + tAmount;
+        await supabase.from('accounts').update({ balance: newBal }).eq('name', tAccount);
+      }
+      fetchData();
+    }
+  };
+
   const handleAddAccount = async () => {
     if (!accName || !accBalance) return;
     const { error } = await supabase.from('accounts').insert([{ name: accName, balance: parseFloat(accBalance), user_id: user.id }]).select();
@@ -165,12 +181,12 @@ export default function Home() {
         <div className={`p-10 rounded-[50px] shadow-2xl w-full max-w-sm border ${isDarkMode ? 'bg-[#1E293B] border-gray-700' : 'bg-white'}`}>
           <h1 className="text-4xl font-black italic text-center mb-8 text-purple-600">Lavenly</h1>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="email" placeholder="Email" className={`w-full p-4 rounded-2xl outline-none font-bold ${isDarkMode ? 'bg-[#0F172A] text-white border-gray-700' : 'bg-gray-100 text-gray-800'}`} value={email} onChange={e => setEmail(e.target.value)} />
-            <input type="password" placeholder="Password" className={`w-full p-4 rounded-2xl outline-none font-bold ${isDarkMode ? 'bg-[#0F172A] text-white border-gray-700' : 'bg-gray-100 text-gray-800'}`} value={password} onChange={e => setPassword(e.target.value)} />
-            <button type="submit" className="w-full bg-purple-600 text-white p-4 rounded-2xl font-black shadow-lg">SIGN IN</button>
+            <input type="email" placeholder="Email" className={`w-full p-4 rounded-2xl outline-none font-bold ${isDarkMode ? 'bg-[#0F172A] text-white' : 'bg-gray-100 text-gray-800'}`} value={email} onChange={e => setEmail(e.target.value)} />
+            <input type="password" placeholder="Password" className={`w-full p-4 rounded-2xl outline-none font-bold ${isDarkMode ? 'bg-[#0F172A] text-white' : 'bg-gray-100 text-gray-800'}`} value={password} onChange={e => setPassword(e.target.value)} />
+            <button type="submit" className="w-full bg-purple-600 text-white p-4 rounded-2xl font-black shadow-lg hover:scale-95 transition-all">SIGN IN</button>
           </form>
-          <div className="flex items-center my-6"><div className="flex-1 h-px bg-gray-500/20"></div><span className="px-3 text-gray-400 text-[10px] font-black uppercase tracking-widest">OR</span><div className="flex-1 h-px bg-gray-500/20"></div></div>
-          <button onClick={handleGoogleLogin} className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-bold border-2 transition-all ${isDarkMode ? 'border-gray-700 text-white hover:bg-gray-800' : 'border-gray-100 text-gray-700 hover:bg-gray-50'}`}>
+          <div className="flex items-center my-6"><div className="flex-1 h-px bg-gray-500/20"></div><span className="px-3 text-gray-400 text-[10px] font-black tracking-widest uppercase">OR</span><div className="flex-1 h-px bg-gray-500/20"></div></div>
+          <button onClick={handleGoogleLogin} className={`w-full flex items-center justify-center gap-3 p-4 rounded-2xl font-bold border-2 transition-all ${isDarkMode ? 'border-gray-700 text-white hover:bg-gray-800 bg-[#0F172A]' : 'border-gray-100 text-gray-700 hover:bg-gray-50 bg-white'}`}>
             <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="google" />
             Continue with Google
           </button>
@@ -185,12 +201,12 @@ export default function Home() {
       <div className={`h-screen flex flex-col items-center justify-center ${isDarkMode ? 'bg-[#0F172A]' : 'bg-[#F3F0FF]'}`}>
         <div className="text-center mb-10">
           {isSettingPin ? <ShieldCheck className="mx-auto text-green-500 mb-4" size={56} /> : <Lock className="mx-auto text-purple-600 mb-4" size={56} />}
-          <h2 className={`text-3xl font-black italic ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{isSettingPin ? 'Create Vault PIN' : 'Enter PIN'}</h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase mt-3">Vault Security v3.0</p>
+          <h2 className={`text-3xl font-black italic ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>{isSettingPin ? 'Create PIN' : 'Enter PIN'}</h2>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-3">Personal Vault Security</p>
         </div>
         <div className="flex gap-5 mb-12">
           {[1, 2, 3, 4].map((dot) => (
-            <div key={dot} className={`w-5 h-5 rounded-full border-2 border-purple-600 transition-all ${inputPin.length >= dot ? 'bg-purple-600 scale-125 shadow-[0_0_15px_#9333ea]' : 'bg-transparent'}`} />
+            <div key={dot} className={`w-5 h-5 rounded-full border-2 border-purple-600 transition-all ${inputPin.length >= dot ? 'bg-purple-600 scale-125' : 'bg-transparent'}`} />
           ))}
         </div>
         <div className="grid grid-cols-3 gap-8">
@@ -205,7 +221,6 @@ export default function Home() {
   // 3. MAIN DASHBOARD
   return (
     <main className={`flex h-screen p-4 gap-4 transition-all duration-500 ${isDarkMode ? 'bg-[#0F172A] text-white' : 'bg-[#F8F9FD] text-gray-800'}`}>
-      {/* Sidebar */}
       <aside className={`w-72 rounded-[40px] p-8 flex flex-col border ${isDarkMode ? 'bg-[#1E293B] border-gray-800' : 'bg-white shadow-lg'}`}>
         <div className="flex justify-between items-center mb-10">
           <h1 className="text-3xl font-black italic text-purple-600">Lavenly</h1>
@@ -220,13 +235,12 @@ export default function Home() {
             </div>
           ))}
         </div>
-        <button onClick={() => supabase.auth.signOut()} className="mt-auto p-5 text-red-500 font-bold flex items-center justify-center gap-2 bg-red-500/5 rounded-3xl hover:bg-red-500/10"><LogOut size={18}/> Logout</button>
+        <button onClick={() => supabase.auth.signOut()} className="mt-auto p-5 text-red-500 font-bold flex items-center justify-center gap-2 bg-red-500/5 rounded-3xl hover:bg-red-500/10 transition-all"><LogOut size={18}/> Logout</button>
       </aside>
 
-      {/* Content */}
       <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2">
         <header className={`p-8 rounded-[40px] flex justify-between items-center border ${isDarkMode ? 'bg-[#1E293B] border-gray-800' : 'bg-white shadow-md'}`}>
-          <div><h2 className="text-2xl font-black italic">Dashboard</h2><p className="text-xs text-gray-500">{user.email}</p></div>
+          <div><h2 className="text-2xl font-black italic">Dashboard</h2><p className="text-xs text-gray-500 mt-1">{user.email}</p></div>
           <button onClick={() => setIsModalOpen(true)} className="bg-purple-600 px-10 py-4 rounded-[24px] text-white font-black shadow-2xl hover:scale-105 transition-all">+ ENTRY</button>
         </header>
 
@@ -234,7 +248,7 @@ export default function Home() {
            <div className="flex items-center gap-3 mb-6 opacity-30 text-[10px] font-black uppercase"><BarChart3 size={18}/> Weekly Spending</div>
            <ResponsiveContainer width="100%" height="85%">
               <BarChart data={getChartData()}>
-                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 11}} />
+                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6b7280', fontSize: 11, fontWeight: 'bold'}} />
                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '20px', backgroundColor: '#1e293b', border: 'none', color: '#fff'}} />
                  <Bar dataKey="amount" fill="#9333ea" radius={[12, 12, 12, 12]} barSize={40} />
               </BarChart>
@@ -245,12 +259,15 @@ export default function Home() {
           <h3 className="font-black text-xs uppercase opacity-30 mb-8 tracking-widest">Recent Activity</h3>
           <div className="flex flex-col gap-5">
             {transactions.map(t => (
-              <div key={t.id} className={`group flex justify-between items-center p-6 rounded-[28px] transition-all ${isDarkMode ? 'bg-[#0F172A]/60' : 'bg-gray-50 shadow-sm'}`}>
+              <div key={t.id} className={`group flex justify-between items-center p-6 rounded-[28px] transition-all ${isDarkMode ? 'bg-[#0F172A]/60 hover:bg-[#0F172A]' : 'bg-gray-50 hover:bg-gray-100 shadow-sm'}`}>
                 <div className="flex items-center gap-5">
                   <div className={`p-4 rounded-2xl ${t.type === 'income' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>{t.type === 'income' ? <ArrowUpRight size={24}/> : <ArrowDownRight size={24}/>}</div>
-                  <div><p className="font-black text-lg">{t.name}</p><p className="text-[11px] font-bold text-gray-500 uppercase">{t.account}</p></div>
+                  <div><p className="font-black text-lg">{t.name}</p><p className="text-[11px] font-bold text-gray-500 uppercase tracking-tighter">{t.account}</p></div>
                 </div>
-                <p className={`font-black text-xl italic ${t.type === 'income' ? 'text-green-500' : ''}`}>₹{Number(t.amount).toLocaleString()}</p>
+                <div className="flex items-center gap-6">
+                  <p className={`font-black text-xl italic ${t.type === 'income' ? 'text-green-500' : ''}`}>₹{Number(t.amount).toLocaleString()}</p>
+                  <button onClick={() => handleDeleteTransaction(t.id, t.amount, t.type, t.account)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all transform hover:scale-125"><Trash2 size={20}/></button>
+                </div>
               </div>
             ))}
           </div>
@@ -260,27 +277,30 @@ export default function Home() {
       {/* Modals */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-[#0F172A]/90 backdrop-blur-md flex items-center justify-center z-50 p-6">
-          <div className={`w-full max-w-md p-10 rounded-[50px] shadow-2xl ${isDarkMode ? 'bg-[#1E293B] border border-gray-700' : 'bg-white'}`}>
+          <div className={`w-full max-w-md p-10 rounded-[50px] shadow-2xl ${isDarkMode ? 'bg-[#1E293B] border-gray-700' : 'bg-white'}`}>
             <div className="flex gap-3 mb-8 p-1.5 bg-gray-500/5 rounded-3xl">
-              <button onClick={() => setType('expense')} className={`flex-1 py-4 rounded-2xl font-black transition-all ${type === 'expense' ? 'bg-purple-600 text-white shadow-xl scale-105' : 'text-gray-500'}`}>Expense</button>
-              <button onClick={() => setType('income')} className={`flex-1 py-4 rounded-2xl font-black transition-all ${type === 'income' ? 'bg-purple-600 text-white shadow-xl scale-105' : 'text-gray-500'}`}>Income</button>
+              <button onClick={() => setType('expense')} className={`flex-1 py-4 rounded-2xl font-black ${type === 'expense' ? 'bg-purple-600 text-white shadow-xl' : 'text-gray-500'}`}>Expense</button>
+              <button onClick={() => setType('income')} className={`flex-1 py-4 rounded-2xl font-black ${type === 'income' ? 'bg-purple-600 text-white shadow-xl' : 'text-gray-500'}`}>Income</button>
             </div>
             <select className="w-full p-5 mb-5 rounded-3xl bg-gray-500/10 border-none outline-none font-black text-lg" value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)}>
               {accounts.map(acc => <option key={acc.id} value={acc.name} className="text-black">{acc.name}</option>)}
             </select>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Description" className="w-full p-5 mb-5 rounded-3xl bg-gray-500/10 outline-none font-black text-lg" />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="What for?" className="w-full p-5 mb-5 rounded-3xl bg-gray-500/10 outline-none font-black text-lg" />
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount (₹)" className="w-full p-5 mb-8 rounded-3xl bg-gray-500/10 outline-none text-3xl font-black text-purple-600" />
-            <button onClick={handleSave} className="w-full bg-purple-600 text-white p-5 rounded-3xl font-black shadow-2xl hover:scale-105 transition-all">CONFIRM ENTRY</button>
+            <div className="flex gap-4">
+              <button onClick={() => setIsModalOpen(false)} className="flex-1 p-5 font-black text-gray-500">Cancel</button>
+              <button onClick={handleSave} className="flex-[2] bg-purple-600 text-white p-5 rounded-3xl font-black shadow-2xl hover:scale-105 transition-all">CONFIRM</button>
+            </div>
           </div>
         </div>
       )}
 
       {isAccModalOpen && (
         <div className="fixed inset-0 bg-[#0F172A]/90 backdrop-blur-md flex items-center justify-center z-50 p-6">
-          <div className={`w-full max-w-md p-10 rounded-[50px] shadow-2xl ${isDarkMode ? 'bg-[#1E293B] border border-gray-700' : 'bg-white'}`}>
+          <div className={`w-full max-w-md p-10 rounded-[50px] shadow-2xl ${isDarkMode ? 'bg-[#1E293B] border-gray-700' : 'bg-white'}`}>
             <h3 className="text-2xl font-black italic mb-8">Add Wallet</h3>
             <input value={accName} onChange={e => setAccName(e.target.value)} placeholder="Bank Name" className="w-full p-5 mb-5 rounded-3xl bg-gray-500/10 outline-none font-black text-lg" />
-            <input type="number" value={accBalance} onChange={e => setAccBalance(e.target.value)} placeholder="Opening Balance" className="w-full p-5 mb-8 rounded-3xl bg-gray-500/10 outline-none font-black text-2xl" />
+            <input type="number" value={accBalance} onChange={e => setAccBalance(e.target.value)} placeholder="Initial Balance" className="w-full p-5 mb-8 rounded-3xl bg-gray-500/10 outline-none font-black text-2xl" />
             <button onClick={handleAddAccount} className="w-full bg-purple-600 text-white p-5 rounded-[28px] font-black shadow-2xl hover:scale-105 transition-all">ACTIVATE WALLET</button>
           </div>
         </div>
